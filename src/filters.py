@@ -42,7 +42,7 @@ def _pad_zero(x, pad):
     return np.pad(x.astype(float), ((ph, ph), (pw, pw)), mode="constant")
 
 
-def convolve2d_naive(image, kernel, mode="zero"):
+def convolve2d_naive(image, kernel):
     """朴素多重循环版（基准，绝对正确）。边界：zero-pad / same。
 
     供 Phase 1 校验与生产版对齐；逻辑与 convolve2d 完全一致。
@@ -60,7 +60,7 @@ def convolve2d_naive(image, kernel, mode="zero"):
     return out
 
 
-def convolve2d(image, kernel, mode="zero"):
+def convolve2d(image, kernel):
     """向量化二维卷积（生产用）。边界：zero-pad / same，与 convolve2d_naive 同策略。
 
     使用 sliding_window_view 取局部窗口 + einsum 求和，不经过 scipy / cv2 / np.fft。
@@ -75,24 +75,19 @@ def convolve2d(image, kernel, mode="zero"):
 
 
 def _full_conv2d(a, b):
-    """真卷积 a * b（内部对 b 旋转 180°），零填充，输出 (Ha+Hb-1, Wa+Wb-1)。供反向使用。"""
+    """真卷积 a * b（零填充），输出 (Ha+Hb-1, Wa+Wb-1)。供 convolve2d_backward 使用。
+
+    向量化实现：对 a 做 (Hb-1, Wb-1) 零填充，再用 sliding_window_view 取 (Hb, Wb)
+    窗口与 b 做互相关，等价于"对 b 旋转 180° 后与 a 做互相关"的真卷积语义。
+    输出尺寸 (Ha+Hb-1, Wa+Wb-1) 与 zero-padding 边界与原四重循环逐元素一致。
+    仅用 np.pad + sliding_window_view + einsum，无 scipy / cv2 / np.fft。
+    """
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
-    Ha, Wa = a.shape
     Hb, Wb = b.shape
-    b_rot = np.rot90(np.rot90(b))
-    out = np.zeros((Ha + Hb - 1, Wa + Wb - 1))
-    for m in range(out.shape[0]):
-        for n in range(out.shape[1]):
-            s = 0.0
-            for p in range(Hb):
-                for q in range(Wb):
-                    aa = m - p
-                    bb = n - q
-                    if 0 <= aa < Ha and 0 <= bb < Wa:
-                        s += a[aa, bb] * b_rot[p, q]
-            out[m, n] = s
-    return out
+    a_pad = np.pad(a, ((Hb - 1, Hb - 1), (Wb - 1, Wb - 1)), mode="constant")
+    win = sliding_window_view(a_pad, (Hb, Wb))
+    return np.einsum("mnrs,rs->mn", win, b)
 
 
 def convolve2d_backward(dout, x, kernel, mode="zero"):
