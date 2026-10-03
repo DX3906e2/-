@@ -25,4 +25,5 @@ MODEL_PATH = "outputs/model.npz"
 # ---- 随机种子 ----
 SEED = 42
 
-# MNIST_DIR 本阶段不写，留到 Phase 2（涉及 .gitignore 口径，另行确认后补）
+# ---- 数据存放 ----
+MNIST_DIR = "data/mnist"   # 决策 D15：data/ 必须进版本库，禁止写进 .gitignore
