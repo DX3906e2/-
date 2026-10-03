@@ -104,17 +104,22 @@ class CNN:
             self.fc.grad_W, self.fc.grad_b,
         ]
 
-    def gradient_check(self, x, y, eps=1e-4, noise=0.0):
-        """中心差分数值梯度 vs 解析梯度，逐参数组报告 max_rel_error。
+    def gradient_check(self, x, y, eps=1e-6, noise=0.0, atol=1e-6, rtol=1e-4):
+        """中心差分数值梯度 vs 解析梯度，逐参数组报告误差与判定。
 
-        对全部 6 组参数（conv1.W/b, conv2.W/b, fc.W/b）逐一检查。
-        返回 [(name, max_rel_error), ...]。建议小 batch（2~4）。
+        对全部 6 组参数（conv1.W/b, conv2.W/b, fc.W/b）逐一检查。建议小 batch（2~4）。
+        返回 [(name, max_rel_error, atol_rtol_err, passed), ...]。
 
-        数值梯度陷阱（ReLU 在 0 不可导 + MaxPool 块内并列）：MNIST 纯黑背景的
-        零窗口会让 conv 输出出现大量"精确 0"，中心差分在不可导点会失真，
-        表现为个别参数组 rel_error 偏大——这是有限差分在 kink 处的固有误差，
-        并非反向公式错误（密输入下同样代码 rel_error ~1e-8）。
-        需要时可将 noise>0（如 1e-4）对输入/参数加微扰打破平局，检查后恢复参数。
+        判定准则（相对 + 绝对容差，二者互补）:
+            |num - ana| <= atol + rtol * max(|num|, |ana|)
+            atol_rtol_err = |num - ana| / (atol + rtol * max(|num|, |ana|))，< 1 为 PASS。
+
+        为什么不用纯相对误差: 网络含 ReLU(0 处不可导) 与 MaxPool(块内并列时"赢家"跳变)
+        两个 kink 源，有限差分在 kink 处误差天然偏大，且**eps 越大越严重**（实测
+        eps 1e-3→1e-4→1e-5→1e-6 时误差单调收敛到 1e-8 量级）。故 eps 取小值 1e-6
+        压制 kink；而小梯度元素(~1e-5)的绝对误差仅 ~1e-11，由 atol 放行。
+        两个诉求（压 kink / 容小梯度）用 (小 eps + atol/rtol) 解耦，不再互相打架。
+        需要时可将 noise>0 对输入/参数加微扰打破平局，检查后恢复参数。
         """
         x = np.asarray(x, dtype=np.float64)
         names = ["conv1.W", "conv1.b", "conv2.W", "conv2.b", "fc.W", "fc.b"]
@@ -145,9 +150,11 @@ class CNN:
                     p[idx] = orig
                     num[idx] = (lp - lm) / (2.0 * eps)
                     it.iternext()
-                denom = np.maximum(np.abs(ana) + np.abs(num), 1e-8)
-                rel = np.abs(ana - num) / denom
-                results.append((name, float(rel.max())))
+                absdiff = np.abs(ana - num)
+                rel = float((absdiff / np.maximum(np.abs(ana) + np.abs(num), 1e-8)).max())
+                tol = atol + rtol * np.maximum(np.abs(ana), np.abs(num))
+                norm = float((absdiff / tol).max())
+                results.append((name, rel, norm, bool(norm < 1.0)))
         finally:
             for p, b in zip(self.params(), backups):
                 p[...] = b  # 恢复参数

@@ -74,6 +74,21 @@ def convolve2d(image, kernel):
     return np.einsum("hwij,ij->hw", windows, kernel)
 
 
+def convolve2d_batch(images, kernel):
+    """批量二维卷积（生产用）：(N,H,W) × (kh,kw) -> (N,H,W)。
+
+    边界策略与 convolve2d 完全一致（zero-pad / same），仅把单图 einsum 扩成批量，
+    供 Phase 5 去噪管线对整批图像一次卷积（避免逐张 Python 循环的开销）。
+    """
+    images = np.asarray(images, dtype=float)
+    kernel = np.asarray(kernel, dtype=float)
+    kh, kw = kernel.shape
+    ph, pw = kh // 2, kw // 2
+    padded = np.pad(images, ((0, 0), (ph, ph), (pw, pw)), mode="constant")
+    windows = sliding_window_view(padded, (kh, kw), axis=(-2, -1))
+    return np.einsum("nhwij,ij->nhw", windows, kernel)
+
+
 def _full_conv2d(a, b):
     """真卷积 a * b（零填充），输出 (Ha+Hb-1, Wa+Wb-1)。供 convolve2d_backward 使用。
 

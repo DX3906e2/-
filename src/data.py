@@ -138,14 +138,32 @@ def load_mnist(n_train=None, log=print):
     return X_train, y_train, X_test, y_test
 
 
-def add_gaussian_noise(X, sigma=None):
+def to_nchw(X):
+    """把 (N, 28, 28) 图像张量补通道维为 (N, 1, 28, 28)（CNN 输入约定 NCHW）。
+
+    统一入口：train / evaluate / app 一律用它，禁止各处自行 reshape。
+    已是 4D 则原样返回。
+    """
+    X = np.asarray(X)
+    if X.ndim == 4:
+        return X
+    if X.ndim == 3:
+        return X[:, None, :, :]
+    raise ValueError(f"to_nchw 期望 (N,H,W) 或 (N,C,H,W)，实际 {X.shape}")
+
+
+def add_gaussian_noise(X, sigma=None, rng=None):
     """对图像张量增加高斯噪声并裁剪到 [0,1]。
 
-    sigma 默认取 config.NOISE_SIGMA；rng 由 config.SEED 构造，保证同 seed 可复现。
+    sigma 默认取 config.NOISE_SIGMA。
+    rng 为 None 时用 np.random.default_rng(config.SEED)（可复现，兼容旧调用）；
+    传入外部 rng 时，调用方负责其确定性（训练循环逐 epoch 换噪声以做数据增强，
+    整体仍由 config.SEED 派生 → 可复现）。
     """
     if sigma is None:
         sigma = config.NOISE_SIGMA
-    rng = np.random.default_rng(config.SEED)
+    if rng is None:
+        rng = np.random.default_rng(config.SEED)
     return np.clip(X + sigma * rng.standard_normal(X.shape), 0.0, 1.0).astype(np.float64)
 
 

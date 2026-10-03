@@ -11,3 +11,6 @@ outputs/*.npz
 # Python 缓存
 __pycache__/
 *.pyc
+
+# 训练日志（过程产物，不进版本库）
+outputs/log_*.txt
