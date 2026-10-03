@@ -1,0 +1,13 @@
+# agent 工作痕迹：规划/调研/日志/复盘/第三方参考代码（不进版本库）
+agent/
+
+# 第三方参考仓库（LeNet/CNN 等）：保留各自 .git 跟上游，但整体不进本工程版本库
+third_party/
+
+# 训练产物：权重文件不进版本库（图表可提交）
+outputs/*.npz
+*.npz
+
+# Python 缓存
+__pycache__/
+*.pyc

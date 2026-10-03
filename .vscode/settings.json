@@ -1,0 +1,30 @@
+{
+    // 解释器：用真实路径（之前默认的 WindowsApps 桩路径会让 VS Code 选不准）
+    "python.defaultInterpreterPath": "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\Python39_64\\python.exe",
+    "python.terminal.activateEnvironment": true,
+
+    // Git：只接管根仓库，不扫描 agent/ 内的第三方嵌套仓库（解决提交卡顿）
+    "git.autoRepositoryDetection": false,
+    "files.watcherExclude": {
+        "**/agent/**": true,
+        "**/third_party/**": true
+    },
+
+    // 格式化：保存即用 Black（需 ms-python.black-formatter 扩展）
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "notebook.formatOnSave.enabled": true,
+
+    // IntelliSense（Pylance）
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.diagnosticMode": "workspace",
+
+    // 顺手隐藏编译产物
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/*.pyc": true
+    }
+}
