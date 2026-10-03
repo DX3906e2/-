@@ -4,13 +4,16 @@ agent/
 # 第三方参考仓库（LeNet/CNN 等）：保留各自 .git 跟上游，但整体不进本工程版本库
 third_party/
 
-# 训练产物：权重文件不进版本库（图表可提交）
-outputs/*.npz
+# 权重：默认全部忽略；三个正式权重随提交入库（云端留档，每个约 74KB）
 *.npz
+!outputs/model.npz
+!outputs/model_A.npz
+!outputs/model_C.npz
+
+# 本地快照归档 + 训练日志：过程产物，不进版本库
+outputs/archive/
+outputs/log_*.txt
 
 # Python 缓存
 __pycache__/
 *.pyc
-
-# 训练日志（过程产物，不进版本库）
-outputs/log_*.txt
