@@ -1,3 +1,8 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 """MNIST 本地读取 + 手写 IDX 解析 + 高斯噪声注入（Phase 2，决策 D13/D15）。
 
 依赖：仅 numpy + 标准库（urllib / gzip / struct / os）。

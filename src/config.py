@@ -13,6 +13,8 @@ NOISE_SIGMA = 0.3       # 训练时高斯噪声强度
 GAUSS_K = 5             # 去噪核大小
 GAUSS_SIGMA = 1.2       # 去噪核 sigma
 CONV_CHANNELS = (8, 16)
+CONV_KERNEL = 3         # 两阶段 Conv 均为 3×3（zero-pad same）
+POOL_SIZE = 2           # MaxPool 2×2 / stride 2
 LR = 0.05               # 文档区间 0.01~0.1，取中值起步
 BATCH_SIZE = 64
 EPOCHS = 10
@@ -27,3 +29,4 @@ SEED = 42
 
 # ---- 数据存放 ----
 MNIST_DIR = "data/mnist"   # 决策 D15：data/ 必须进版本库，禁止写进 .gitignore
+NUM_CLASSES = 10            # MNIST 输出类别数
