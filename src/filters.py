@@ -91,14 +91,36 @@ def _full_conv2d(a, b):
 
 
 def convolve2d_backward(dout, x, kernel, mode="zero"):
-    """二维卷积反向传播。
+    """二维卷积反向传播，支持两种形态（边界策略完全一致：zero-pad / same）。
 
-    dout: (H, W) 上游梯度；x: (H, W) 输入；kernel: (kh, kw)。
-    返回 (dx, dkernel)，与 Phase 3/4 的 Conv 层反向一致。
+    形态一（Phase 1 原语义）:
+        dout (H,W), x (H,W), kernel (kh,kw) -> (dx, dkernel)
+        dx = 真卷积(dout, kernel) 取中心 HxW；dkernel = 互相关(x_padded, dout)。
 
-    dx = 真卷积(dout, kernel) 取中心 HxW；
-    dkernel = 互相关(x_padded, dout)。
+    形态二（Phase 4 Conv 层批量用，是形态一在 (N,O,C) 维上的直接推广，无 Python 通道循环）:
+        dout (N,O,H,W), x (N,C,H,W), kernel (O,C,kh,kw)
+        -> dx (N,C,H,W)（已对输出通道 O 求和），dkernel (O,C,kh,kw)（已对批量 N 求和）。
     """
+    dout = np.asarray(dout, dtype=float)
+    x = np.asarray(x, dtype=float)
+    kernel = np.asarray(kernel, dtype=float)
+
+    if dout.ndim == 4:  # 批量 NCHW 分支：与 2D 分支同一套 pad/rot180/滑窗/裁剪数学
+        kh, kw = kernel.shape[-2], kernel.shape[-1]
+        ph, pw = kh // 2, kw // 2
+        H, W = x.shape[-2], x.shape[-1]
+        # dx：对 dout 每侧补 (kh-1, kw-1) 零，滑窗与 rot180(kernel) 互相关，再裁中心
+        dout_pad = np.pad(dout, ((0, 0), (0, 0), (kh - 1, kh - 1), (kw - 1, kw - 1)), mode="constant")
+        dwin = sliding_window_view(dout_pad, (kh, kw), axis=(-2, -1))  # (N,O,H+kh-1,W+kw-1,kh,kw)
+        k_rot = np.rot90(np.rot90(kernel, axes=(-2, -1)), axes=(-2, -1))  # (O,C,kh,kw)
+        dx_full = np.einsum("nohwij,ocij->nchw", dwin, k_rot)
+        dx = dx_full[:, :, ph:ph + H, pw:pw + W]
+        # dkernel：x 零填充后与 dout 互相关（对 N 求和）
+        x_pad = np.pad(x, ((0, 0), (0, 0), (ph, ph), (pw, pw)), mode="constant")
+        xwin = sliding_window_view(x_pad, (kh, kw), axis=(-2, -1))  # (N,C,H,W,kh,kw)
+        dkernel = np.einsum("nchwij,nohw->ocij", xwin, dout)
+        return dx, dkernel
+
     dout = np.asarray(dout, dtype=float)
     x = np.asarray(x, dtype=float)
     kernel = np.asarray(kernel, dtype=float)

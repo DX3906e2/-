@@ -74,9 +74,84 @@ class CNN:
         self.forward(x)
         return self._cross_entropy(self.fc.out, y)
 
-    def gradient_check(self, x, y, eps=1e-5):
-        """梯度检查入口（Phase 4 实现，需 backward）。本阶段暂不可用。"""
-        raise NotImplementedError("gradient_check 在 Phase 4 实现（依赖各层 backward）")
+    def backward(self, y):
+        """反向传播（须先 forward）。Softmax+交叉熵合并：dlogits = (probs - onehot) / N。
+
+        loss 是 batch mean，故不得漏 1/N。逐层反向并填充各层 grad_W/grad_b。
+        返回 dL/dx（(N,1,28,28)），一般无需使用。
+        """
+        y = np.asarray(y, dtype=np.int64)
+        probs = self.softmax.probs
+        N = y.shape[0]
+        dlogits = probs.copy()
+        dlogits[np.arange(N), y] -= 1.0
+        dlogits /= N
+        g = self.fc.backward(dlogits)
+        g = self.flatten.backward(g)
+        g = self.pool2.backward(g)
+        g = self.relu2.backward(g)
+        g = self.conv2.backward(g)
+        g = self.pool1.backward(g)
+        g = self.relu1.backward(g)
+        g = self.conv1.backward(g)
+        return g
+
+    def grads(self):
+        """返回与 params() 同序的梯度列表 [conv1.W/b, conv2.W/b, fc.W/b]。"""
+        return [
+            self.conv1.grad_W, self.conv1.grad_b,
+            self.conv2.grad_W, self.conv2.grad_b,
+            self.fc.grad_W, self.fc.grad_b,
+        ]
+
+    def gradient_check(self, x, y, eps=1e-4, noise=0.0):
+        """中心差分数值梯度 vs 解析梯度，逐参数组报告 max_rel_error。
+
+        对全部 6 组参数（conv1.W/b, conv2.W/b, fc.W/b）逐一检查。
+        返回 [(name, max_rel_error), ...]。建议小 batch（2~4）。
+
+        数值梯度陷阱（ReLU 在 0 不可导 + MaxPool 块内并列）：MNIST 纯黑背景的
+        零窗口会让 conv 输出出现大量"精确 0"，中心差分在不可导点会失真，
+        表现为个别参数组 rel_error 偏大——这是有限差分在 kink 处的固有误差，
+        并非反向公式错误（密输入下同样代码 rel_error ~1e-8）。
+        需要时可将 noise>0（如 1e-4）对输入/参数加微扰打破平局，检查后恢复参数。
+        """
+        x = np.asarray(x, dtype=np.float64)
+        names = ["conv1.W", "conv1.b", "conv2.W", "conv2.b", "fc.W", "fc.b"]
+        pgroups = [self.conv1.W, self.conv1.b, self.conv2.W, self.conv2.b, self.fc.W, self.fc.b]
+
+        rng = np.random.default_rng(config.SEED + 12345)
+        x_n = x + rng.uniform(-noise, noise, x.shape) if noise > 0 else x
+        backups = [p.copy() for p in self.params()]
+        if noise > 0:
+            for p in self.params():
+                p += rng.uniform(-noise, noise, p.shape)
+
+        try:
+            self.forward(x_n)
+            self.backward(y)
+            ana_groups = [np.asarray(g).copy() for g in self.grads()]
+            results = []
+            for name, p, ana in zip(names, pgroups, ana_groups):
+                num = np.zeros_like(p)
+                it = np.nditer(p, flags=["multi_index"])
+                while not it.finished:
+                    idx = it.multi_index
+                    orig = p[idx]
+                    p[idx] = orig + eps
+                    lp = self.loss(x_n, y)
+                    p[idx] = orig - eps
+                    lm = self.loss(x_n, y)
+                    p[idx] = orig
+                    num[idx] = (lp - lm) / (2.0 * eps)
+                    it.iternext()
+                denom = np.maximum(np.abs(ana) + np.abs(num), 1e-8)
+                rel = np.abs(ana - num) / denom
+                results.append((name, float(rel.max())))
+        finally:
+            for p, b in zip(self.params(), backups):
+                p[...] = b  # 恢复参数
+        return results
 
 
 def _param_count(cnn):
